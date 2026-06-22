@@ -12,10 +12,17 @@
   --cream: #f5f0e6;
   --border: #dde4df;
   --muted: #718079;
+  --purple: #667eea;
+  --purple-dark: #764ba2;
 }
 
 * { box-sizing: border-box; }
-body { margin: 0; min-width: 320px; min-height: 100vh; }
+body { 
+  margin: 0; 
+  min-width: 320px; 
+  min-height: 100vh;
+  background: linear-gradient(135deg, var(--purple) 0%, var(--purple-dark) 100%);
+}
 button, input, select { font: inherit; }
 button { cursor: pointer; }
 #root { min-height: 100vh; }
