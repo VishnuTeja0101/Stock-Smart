@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect } from 'react'
 import Login from './components/Login'
 import './App.css'
-
+ 
 const initialInventory = [
   { id: 1, name: 'Spinach', category: 'Vegetables', quantity: 120, unit: 'g', required: 250, icon: '🥬' },
   { id: 2, name: 'Brown rice', category: 'Grains', quantity: 900, unit: 'g', required: 500, icon: '🌾' },
@@ -17,6 +17,29 @@ const initialMenu = [
   { id: 3, day: 'WED', date: '24', title: 'Green protein pasta', meta: 'Dinner · 540 kcal', color: '#b8d9b7' },
   { id: 4, day: 'THU', date: '25', title: 'Yogurt fruit parfait', meta: 'Breakfast · 380 kcal', color: '#c5d5ef' },
 ]
+
+const recipeCatalog = [
+  { name: 'Spinach', unit: 'g', baseQty: 120, icon: '🥬', keywords: ['spinach', 'leafy greens'] },
+  { name: 'Brown rice', unit: 'g', baseQty: 150, icon: '🌾', keywords: ['brown rice', 'rice'] },
+  { name: 'Greek yogurt', unit: 'cup', baseQty: 1, icon: '🥛', keywords: ['greek yogurt', 'yogurt'] },
+  { name: 'Bananas', unit: 'pcs', baseQty: 2, icon: '🍌', keywords: ['banana', 'bananas'] },
+  { name: 'Chicken breast', unit: 'g', baseQty: 200, icon: '🍗', keywords: ['chicken breast', 'chicken'] },
+  { name: 'Eggs', unit: 'pcs', baseQty: 2, icon: '🥚', keywords: ['egg', 'eggs'] },
+  { name: 'Tomato', unit: 'pcs', baseQty: 2, icon: '🍅', keywords: ['tomato', 'tomatoes'] },
+  { name: 'Onion', unit: 'pcs', baseQty: 1, icon: '🧅', keywords: ['onion', 'onions'] },
+  { name: 'Garlic', unit: 'cloves', baseQty: 2, icon: '🧄', keywords: ['garlic'] },
+  { name: 'Oats', unit: 'g', baseQty: 80, icon: '🌾', keywords: ['oats', 'oatmeal'] },
+  { name: 'Milk', unit: 'cup', baseQty: 1, icon: '🥛', keywords: ['milk'] },
+]
+
+const consumptionFactors = {
+  light: 0.9,
+  average: 1,
+  heavy: 1.3,
+  athletic: 1.5,
+}
+
+// analysis is now handled by backend API at /api/analyze
 
 function Icon({ name }) {
   const paths = {
@@ -44,6 +67,17 @@ function App() {
   const [showAdd, setShowAdd] = useState(false)
   const [ordered, setOrdered] = useState(false)
   const [weeklyMenu, setWeeklyMenu] = useState(initialMenu)
+  const [recipeText, setRecipeText] = useState('')
+  const [recipeMembers, setRecipeMembers] = useState(1)
+  const [consumptionPattern, setConsumptionPattern] = useState('average')
+  const [recipeAnalysis, setRecipeAnalysis] = useState(null)
+  const [recipeCache, setRecipeCache] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('recipeCache') || '{}')
+    } catch {
+      return {}
+    }
+  })
   const [dietPlan, setDietPlan] = useState({
     created: false,
     members: 1,
@@ -111,6 +145,30 @@ function App() {
     setIsLoggedIn(false)
   }
 
+  useEffect(() => {
+    localStorage.setItem('recipeCache', JSON.stringify(recipeCache))
+  }, [recipeCache])
+
+  const handleAnalyzeRecipe = async (event) => {
+    if (event && event.preventDefault) event.preventDefault()
+    setRecipeAnalysis(null)
+    try {
+      const res = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: recipeText, members: recipeMembers, pattern: consumptionPattern, inventory }),
+      })
+      const data = await res.json()
+      setRecipeAnalysis(data)
+      // save into client cache as well
+      if (data && data.items) {
+        setRecipeCache((current) => ({ ...current, [String(recipeText || '').toLowerCase().trim()]: { recipeName: recipeText, items: data.items, datasetMatches: data.datasetMatches || [], cachedAt: Date.now() } }))
+      }
+    } catch (err) {
+      setRecipeAnalysis({ error: err.message || 'Network error' })
+    }
+  }
+
   const addItem = (event) => {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
@@ -129,6 +187,16 @@ function App() {
   const pages = {
     Dashboard: <Dashboard inventory={inventory} shortages={shortages} setActive={setActive} weeklyMenu={weeklyMenu} />,
     'Diet Plan': <DietPlan dietPlan={dietPlan} weeklyMenu={weeklyMenu} onUpdateWeeklyMenu={updateWeeklyMenu} onCreate={handleCreateDietPlan} onUpdate={handleUpdateDietPlan} onVerify={handleVerifyDietPlan} />,
+    'Recipe AI': <RecipeAI
+      recipeText={recipeText}
+      setRecipeText={setRecipeText}
+      recipeMembers={recipeMembers}
+      setRecipeMembers={setRecipeMembers}
+      consumptionPattern={consumptionPattern}
+      setConsumptionPattern={setConsumptionPattern}
+      onAnalyze={handleAnalyzeRecipe}
+      analysis={recipeAnalysis}
+    />,
     Inventory: <Inventory items={filteredInventory} search={search} setSearch={setSearch} onAdd={() => setShowAdd(true)} />,
     'Shopping List': <ShoppingList shortages={shortages} total={shoppingTotal} ordered={ordered} onOrder={() => setOrdered(true)} />,
   }
@@ -155,7 +223,7 @@ function App() {
         <div className="brand"><span className="brand-mark">S</span><span>STOCK<br /><b>SMART</b></span></div>
         <nav>
           {[
-            ['Dashboard', 'grid'], ['Diet Plan', 'calendar'], ['Inventory', 'box'], ['Shopping List', 'cart'],
+            ['Dashboard', 'grid'], ['Diet Plan', 'calendar'], ['Recipe AI', 'spark'], ['Inventory', 'box'], ['Shopping List', 'cart'],
           ].map(([label, icon]) => (
             <button className={active === label ? 'active' : ''} onClick={() => setActive(label)} key={label}>
               <Icon name={icon} />{label}{label === 'Shopping List' && shortages.length > 0 && <em>{shortages.length}</em>}
@@ -488,6 +556,105 @@ function DietPlan({ dietPlan, weeklyMenu, onUpdateWeeklyMenu, onCreate, onUpdate
 
 function Inventory({ items, search, setSearch, onAdd }) {
   return <div className="page"><div className="page-heading"><div><span className="eyebrow">YOUR KITCHEN</span><h1>Grocery inventory</h1><p>Track stock levels and know what needs replenishing.</p></div><button className="primary" onClick={onAdd}><Icon name="plus" /> Add item</button></div><div className="search-box"><Icon name="search" /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search inventory..." /></div><div className="inventory-list">{items.map((item) => <div key={item.id} className="inventory-item"><span className="icon-label">{item.icon} {item.name}</span><span className="meta">{item.category}</span><span className="quantity">{item.quantity}/{item.required} {item.unit}</span></div>)}</div></div>
+}
+
+function RecipeAI({ recipeText, setRecipeText, recipeMembers, setRecipeMembers, consumptionPattern, setConsumptionPattern, onAnalyze, analysis }) {
+  return <div className="page">
+    <div className="page-heading"><div><span className="eyebrow">RECIPE ANALYSIS</span><h1>Identify recipe ingredients</h1><p>Describe a meal and get suggested ingredients, household needs, and purchase recommendations.</p></div><button className="primary" onClick={onAnalyze}><Icon name="spark" /> Analyze recipe</button></div>
+    <form className="plan-form" onSubmit={onAnalyze}>
+      <div className="plan-group">
+        <label>Recipe description or ingredient list</label>
+        <textarea
+          rows="5"
+          value={recipeText}
+          onChange={(e) => setRecipeText(e.target.value)}
+          placeholder="e.g. spinach and chicken grain bowl with yogurt dressing"
+        />
+      </div>
+      <div className="plan-group form-row">
+        <label>Family size<input type="number" min="1" value={recipeMembers} onChange={(e) => setRecipeMembers(Number(e.target.value) || 1)} /></label>
+        <label>Consumption pattern<select value={consumptionPattern} onChange={(e) => setConsumptionPattern(e.target.value)}>
+          <option value="light">Light</option>
+          <option value="average">Average</option>
+          <option value="heavy">Heavy</option>
+          <option value="athletic">Athletic</option>
+        </select></label>
+      </div>
+    </form>
+
+    {analysis?.error && (
+      <div className="panel"><p>{analysis.error}</p></div>
+    )}
+
+    {analysis && !analysis.error && (
+      <>
+        <div className="panel">
+          <div className="section-heading"><h2>Result source</h2><span>{analysis.source === 'cache' ? 'Cached recipe match' : analysis.source === 'database' ? 'Found in recipe database' : 'Generated by AI fallback'}</span></div>
+          {analysis.datasetMatches?.length > 0 && (
+            <div className="item-list" style={{ gap: '8px' }}>
+              <strong>Recipe matches</strong>
+              {analysis.datasetMatches.slice(0, 3).map((recipe) => (
+                <div key={recipe.name} className="plan-row">
+                  <div><strong>{recipe.name}</strong><small>{recipe.cuisine} · {recipe.time} mins</small></div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="content-grid">
+          <section className="panel">
+            <div className="panel-title"><div><span className="eyebrow">INGREDIENTS</span><h2>Detected items</h2></div></div>
+            <div className="item-list">
+              {analysis.items.map((item) => (
+                <div key={item.name} className="plan-row">
+                  <div>
+                    <strong>{item.icon} {item.name}</strong>
+                    <small>{item.unit} needed</small>
+                  </div>
+                  <strong>{item.required}</strong>
+                </div>
+              ))}
+            </div>
+          </section>
+          <section className="panel">
+            <div className="panel-title"><div><span className="eyebrow">STOCK CHECK</span><h2>Inventory comparison</h2></div></div>
+            <div className="item-list">
+              {analysis.items.map((item) => (
+                <div key={`${item.name}-stock`} className="plan-row">
+                  <div>
+                    <strong>{item.name}</strong>
+                    <small>{item.inInventory ? 'Found in pantry' : 'Not in pantry'}</small>
+                  </div>
+                  <strong>{item.available}/{item.required}</strong>
+                </div>
+              ))}
+            </div>
+            <div className="metric-card" style={{ marginTop: '18px' }}>
+              <span>Coverage</span>
+              <strong>{analysis.coverage}%</strong>
+            </div>
+          </section>
+        </div>
+      </>
+    )}
+
+    {analysis && analysis.shortages?.length > 0 && (
+      <section className="panel">
+        <div className="section-heading"><h2>Suggested purchases</h2><span>{analysis.shortages.length} items need replenishing</span></div>
+        <div className="item-list">
+          {analysis.shortages.map((item) => (
+            <div key={`${item.name}-shortage`} className="plan-row">
+              <div>
+                <strong>{item.icon} {item.name}</strong>
+                <small>Short by {item.shortage} {item.unit}</small>
+              </div>
+              <strong>Buy</strong>
+            </div>
+          ))}
+        </div>
+      </section>
+    )}
+  </div>
 }
 
 function ShoppingList({ shortages, total, ordered, onOrder }) {
