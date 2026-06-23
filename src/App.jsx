@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import Login from './components/Login'
 import './App.css'
 
@@ -11,11 +11,11 @@ const initialInventory = [
   { id: 6, name: 'Eggs', category: 'Protein', quantity: 8, unit: 'pcs', required: 6, icon: '🥚' },
 ]
 
-const meals = [
-  { day: 'MON', date: '22', title: 'Berry overnight oats', meta: 'Breakfast · 420 kcal', color: '#f0c4d4' },
-  { day: 'TUE', date: '23', title: 'Chicken grain bowl', meta: 'Lunch · 610 kcal', color: '#f1cf98' },
-  { day: 'WED', date: '24', title: 'Green protein pasta', meta: 'Dinner · 540 kcal', color: '#b8d9b7' },
-  { day: 'THU', date: '25', title: 'Yogurt fruit parfait', meta: 'Breakfast · 380 kcal', color: '#c5d5ef' },
+const initialMenu = [
+  { id: 1, day: 'MON', date: '22', title: 'Berry overnight oats', meta: 'Breakfast · 420 kcal', color: '#f0c4d4' },
+  { id: 2, day: 'TUE', date: '23', title: 'Chicken grain bowl', meta: 'Lunch · 610 kcal', color: '#f1cf98' },
+  { id: 3, day: 'WED', date: '24', title: 'Green protein pasta', meta: 'Dinner · 540 kcal', color: '#b8d9b7' },
+  { id: 4, day: 'THU', date: '25', title: 'Yogurt fruit parfait', meta: 'Breakfast · 380 kcal', color: '#c5d5ef' },
 ]
 
 function Icon({ name }) {
@@ -37,11 +37,25 @@ function Icon({ name }) {
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [showSplash, setShowSplash] = useState(true)
   const [active, setActive] = useState('Dashboard')
   const [inventory, setInventory] = useState(initialInventory)
   const [search, setSearch] = useState('')
   const [showAdd, setShowAdd] = useState(false)
   const [ordered, setOrdered] = useState(false)
+  const [weeklyMenu, setWeeklyMenu] = useState(initialMenu)
+  const [dietPlan, setDietPlan] = useState({
+    created: false,
+    members: 1,
+    items: [{ id: 1, name: 'Vegetable stew', quantityPerPerson: 1 }],
+    notes: '',
+    completed: false,
+    verification: {
+      checkedItems: [],
+      notes: '',
+      date: '',
+    },
+  })
 
   const shortages = useMemo(() => inventory.filter((item) => item.quantity < item.required), [inventory])
   const shoppingTotal = shortages.reduce((sum, item) => sum + Math.max(2.5, (item.required - item.quantity) / 100 * 2.2), 0)
@@ -50,6 +64,47 @@ function App() {
   const handleLogin = (email, password) => {
     console.log('Login successful:', { email, password })
     setIsLoggedIn(true)
+    setActive('Diet Plan')
+  }
+
+  const handleCreateDietPlan = (planData) => {
+    setDietPlan({
+      created: true,
+      members: planData.members,
+      items: planData.items,
+      notes: planData.notes,
+      completed: false,
+      verification: {
+        checkedItems: [],
+        notes: '',
+        date: '',
+      },
+    })
+    setActive('Diet Plan')
+  }
+
+  const handleUpdateDietPlan = (updatedPlan) => {
+    setDietPlan((current) => ({
+      ...current,
+      ...updatedPlan,
+      created: true,
+    }))
+  }
+
+  const handleVerifyDietPlan = (checkedItems, notes) => {
+    setDietPlan((current) => ({
+      ...current,
+      completed: true,
+      verification: {
+        checkedItems,
+        notes,
+        date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+      },
+    }))
+  }
+
+  const updateWeeklyMenu = (menu) => {
+    setWeeklyMenu(menu)
   }
 
   const handleLogout = () => {
@@ -72,14 +127,25 @@ function App() {
   }
 
   const pages = {
-    Dashboard: <Dashboard inventory={inventory} shortages={shortages} setActive={setActive} />,
-    'Diet Plan': <DietPlan />,
+    Dashboard: <Dashboard inventory={inventory} shortages={shortages} setActive={setActive} weeklyMenu={weeklyMenu} />,
+    'Diet Plan': <DietPlan dietPlan={dietPlan} weeklyMenu={weeklyMenu} onUpdateWeeklyMenu={updateWeeklyMenu} onCreate={handleCreateDietPlan} onUpdate={handleUpdateDietPlan} onVerify={handleVerifyDietPlan} />,
     Inventory: <Inventory items={filteredInventory} search={search} setSearch={setSearch} onAdd={() => setShowAdd(true)} />,
     'Shopping List': <ShoppingList shortages={shortages} total={shoppingTotal} ordered={ordered} onOrder={() => setOrdered(true)} />,
   }
 
-  // Show login page if not logged in
+  useEffect(() => {
+    if (!isLoggedIn && showSplash) {
+      const timer = setTimeout(() => setShowSplash(false), 2000)
+      return () => clearTimeout(timer)
+    }
+    return undefined
+  }, [isLoggedIn, showSplash])
+
   if (!isLoggedIn) {
+    if (showSplash) {
+      return <div className="splash" />
+    }
+
     return <Login onLogin={handleLogin} />
   }
 
@@ -124,7 +190,7 @@ function App() {
   )
 }
 
-function Dashboard({ inventory, shortages, setActive }) {
+function Dashboard({ inventory, shortages, setActive, weeklyMenu }) {
   const stocked = inventory.length - shortages.length
   return <div className="page">
     <div className="page-heading"><div><span className="eyebrow">MONDAY, 22 JUNE</span><h1>Good morning, Vishnu.</h1><p>Here is what your kitchen needs for a healthy week.</p></div><button className="primary"><Icon name="plus" /> New item</button></div>
@@ -134,11 +200,11 @@ function Dashboard({ inventory, shortages, setActive }) {
     </section>
     <div className="stats-grid">
       <Stat icon="box" label="Pantry items" value={inventory.length} note={`${stocked} ready for the week`} tone="green" />
-      <Stat icon="calendar" label="Meals planned" value="12" note="Across the next 4 days" tone="blue" />
+      <Stat icon="calendar" label="Meals planned" value={weeklyMenu.length} note="Across the next week" tone="blue" />
       <Stat icon="cart" label="Items to buy" value={shortages.length} note="Based on current stock" tone="orange" />
     </div>
     <div className="content-grid">
-      <section className="panel schedule"><div className="panel-title"><div><span className="eyebrow">YOUR PLAN</span><h2>Upcoming meals</h2></div><button onClick={() => setActive('Diet Plan')}>View plan <Icon name="arrow" /></button></div>{meals.map((meal) => <Meal key={meal.day} meal={meal} />)}</section>
+      <section className="panel schedule"><div className="panel-title"><div><span className="eyebrow">YOUR PLAN</span><h2>Weekly menu</h2></div><button onClick={() => setActive('Diet Plan')}>View plan <Icon name="arrow" /></button></div>{weeklyMenu.map((meal) => <Meal key={meal.id} meal={meal} />)}</section>
       <section className="panel low-stock"><div className="panel-title"><div><span className="eyebrow">NEEDS ATTENTION</span><h2>Running low</h2></div><span className="count-badge">{shortages.length}</span></div>{shortages.map((item) => <div key={item.id} className="item-row"><span className="icon-label">{item.icon} {item.name}</span><span className="meta">{item.quantity} {item.unit} of {item.required}</span></div>)}</section>
     </div>
   </div>
@@ -152,8 +218,272 @@ function Meal({ meal }) {
   return <div className="meal-row"><div className="date-tile"><span>{meal.day}</span><b>{meal.date}</b></div><span className="meal-art" style={{ background: meal.color }}>🥗</span><div><b>{meal.title}</b><p>{meal.meta}</p></div></div>
 }
 
-function DietPlan() {
-  return <div className="page"><div className="page-heading"><div><span className="eyebrow">PERSONALIZED NUTRITION</span><h1>Your diet plan</h1><p>A balanced high-protein plan designed for your weekly goals.</p></div></div><p>Diet plan content coming soon...</p></div>
+function DietPlan({ dietPlan, weeklyMenu, onUpdateWeeklyMenu, onCreate, onUpdate, onVerify }) {
+  const [mode, setMode] = useState(dietPlan.created ? 'summary' : 'create')
+  const [members, setMembers] = useState(dietPlan.members)
+  const [items, setItems] = useState(dietPlan.items)
+  const [notes, setNotes] = useState(dietPlan.notes)
+  const [verifyNotes, setVerifyNotes] = useState(dietPlan.verification.notes)
+  const [checkedItems, setCheckedItems] = useState(dietPlan.verification.checkedItems)
+  const [menuItems, setMenuItems] = useState(weeklyMenu)
+
+  useEffect(() => {
+    setMode(dietPlan.created ? 'summary' : 'create')
+    setMembers(dietPlan.members)
+    setItems(dietPlan.items)
+    setNotes(dietPlan.notes)
+    setVerifyNotes(dietPlan.verification.notes)
+    setCheckedItems(dietPlan.verification.checkedItems)
+  }, [dietPlan])
+
+  useEffect(() => {
+    setMenuItems(weeklyMenu)
+  }, [weeklyMenu])
+
+  const totalConsumption = items.reduce((sum, item) => sum + Number(item.quantityPerPerson || 0) * Number(members || 0), 0)
+  const completedCount = checkedItems.filter(Boolean).length
+
+  const handleItemChange = (id, field, value) => {
+    setItems(items.map((item) => (item.id === id ? { ...item, [field]: value } : item)))
+  }
+
+  const handleAddItem = () => {
+    setItems((current) => [...current, { id: Date.now(), name: '', quantityPerPerson: 1 }])
+  }
+
+  const handleRemoveItem = (id) => {
+    setItems((current) => current.filter((item) => item.id !== id))
+  }
+
+  const handleSubmit = (event) => {
+    event.preventDefault()
+    if (!members || members < 1 || items.every((item) => !item.name.trim())) {
+      return
+    }
+    onCreate({ members: Number(members), items, notes })
+  }
+
+  const handleSavePlan = (event) => {
+    event.preventDefault()
+    onUpdate({ members: Number(members), items, notes })
+    setMode('summary')
+  }
+
+  const handleMenuChange = (id, field, value) => {
+    setMenuItems(menuItems.map((item) => (item.id === id ? { ...item, [field]: value } : item)))
+  }
+
+  const handleAddMenuItem = () => {
+    setMenuItems((current) => [...current, { id: Date.now(), day: 'NEW', date: '', title: '', meta: '', color: '#dfece2' }])
+  }
+
+  const handleSaveMenu = () => {
+    onUpdateWeeklyMenu(menuItems)
+  }
+
+  const handleVerifySubmit = (event) => {
+    event.preventDefault()
+    onVerify(checkedItems, verifyNotes)
+  }
+
+  return (
+    <div className="page">
+      <div className="page-heading">
+        <div>
+          <span className="eyebrow">DIET PLAN ONBOARDING</span>
+          <h1>{dietPlan.created ? 'Your daily diet plan' : 'Create your first plan'}</h1>
+          <p>{dietPlan.created
+            ? 'Adjust members, update meals, and verify what was completed at the end of the day.'
+            : 'Tell us how many people you are planning for and what meals you will make today.'}
+          </p>
+        </div>
+        {dietPlan.created && (
+          <button className="outline" type="button" onClick={() => setMode('create')}>
+            Edit plan
+          </button>
+        )}
+      </div>
+
+      {(mode === 'create' || !dietPlan.created) && (
+        <>
+          <form className="plan-form" onSubmit={dietPlan.created ? handleSavePlan : handleSubmit}>
+            <div className="plan-group">
+              <label>Number of people</label>
+              <input
+                type="number"
+                min="1"
+                value={members}
+                onChange={(e) => setMembers(Number(e.target.value) || 1)}
+              />
+              <small>Set the member count for this diet plan and update anytime.</small>
+            </div>
+
+            <div className="plan-group plan-items">
+              <div className="group-header">
+                <div>
+                  <label>Daily food items</label>
+                  <p>Enter the meals or ingredients you will prepare today.</p>
+                </div>
+                <button type="button" className="outline" onClick={handleAddItem}>
+                  <Icon name="plus" /> Add item
+                </button>
+              </div>
+
+              <div className="item-list">
+                {items.map((item, index) => (
+                  <div className="plan-item" key={item.id}>
+                    <div>
+                      <input
+                        type="text"
+                        placeholder={`Food item ${index + 1}`}
+                        value={item.name}
+                        onChange={(e) => handleItemChange(item.id, 'name', e.target.value)}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <input
+                        type="number"
+                        min="0"
+                        value={item.quantityPerPerson}
+                        onChange={(e) => handleItemChange(item.id, 'quantityPerPerson', Number(e.target.value) || 0)}
+                      />
+                      <small>Qty per person</small>
+                    </div>
+                    <button type="button" className="item-remove" onClick={() => handleRemoveItem(item.id)}>
+                      <Icon name="close" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="plan-group">
+              <label>Notes for today</label>
+              <textarea
+                rows="3"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Optional note: preferences, allergies, or focus for today"
+              />
+            </div>
+
+            <div className="plan-summary">
+              <div className="metric-card">
+                <span>Members</span>
+                <strong>{members}</strong>
+              </div>
+              <div className="metric-card">
+                <span>Items planned</span>
+                <strong>{items.length}</strong>
+              </div>
+              <div className="metric-card">
+                <span>Total consumption</span>
+                <strong>{totalConsumption}</strong>
+              </div>
+            </div>
+
+            <button className="primary" type="submit">
+              {dietPlan.created ? 'Save changes' : 'Create plan'}
+            </button>
+          </form>
+
+          <div className="panel weekly-menu-panel">
+            <div className="section-heading"><h2>Weekly menu</h2><button type="button" className="outline" onClick={handleAddMenuItem}><Icon name="plus" /> Add menu item</button></div>
+            <div className="item-list">
+              {menuItems.map((item, index) => (
+                <div className="plan-item" key={item.id}>
+                  <div>
+                    <input
+                      type="text"
+                      placeholder="Day"
+                      value={item.day}
+                      onChange={(e) => handleMenuChange(item.id, 'day', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <input
+                      type="text"
+                      placeholder="Menu"
+                      value={item.title}
+                      onChange={(e) => handleMenuChange(item.id, 'title', e.target.value)}
+                    />
+                  </div>
+                  <button type="button" className="item-remove" onClick={() => setMenuItems((current) => current.filter((menuItem) => menuItem.id !== item.id))}>
+                    <Icon name="close" />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <button className="primary" type="button" onClick={handleSaveMenu}>Save weekly menu</button>
+          </div>
+        </>
+      )}
+
+      {dietPlan.created && mode === 'summary' && (
+        <div className="plan-dashboard">
+          <section className="panel plan-card">
+            <div className="section-heading"><h2>Plan summary</h2><span>{members} people</span></div>
+            <div className="plan-table">
+              {items.map((item) => (
+                <div key={item.id} className="plan-row">
+                  <div>
+                    <strong>{item.name || 'Untitled item'}</strong>
+                    <small>{item.quantityPerPerson} per person</small>
+                  </div>
+                  <strong>{item.quantityPerPerson * members}</strong>
+                </div>
+              ))}
+            </div>
+            <p className="info-note">{notes || 'No additional notes were added for today.'}</p>
+          </section>
+
+          <section className="panel verify-panel">
+            <div className="section-heading"><h2>End of day verification</h2><span>{completedCount}/{items.length} completed</span></div>
+            <form onSubmit={handleVerifySubmit}>
+              <div className="verify-list">
+                {items.map((item, index) => (
+                  <label className="checkbox-row" key={item.id}>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(checkedItems[index])}
+                      onChange={(e) => {
+                        const next = [...checkedItems]
+                        next[index] = e.target.checked
+                        setCheckedItems(next)
+                      }}
+                    />
+                    <span>{item.name || `Item ${index + 1}`}</span>
+                  </label>
+                ))}
+              </div>
+
+              <div className="plan-group">
+                <label>Completion notes</label>
+                <textarea
+                  rows="3"
+                  value={verifyNotes}
+                  onChange={(e) => setVerifyNotes(e.target.value)}
+                  placeholder="Describe what was completed or what changed today"
+                />
+              </div>
+
+              <button className="primary" type="submit">
+                Mark day complete
+              </button>
+            </form>
+
+            {dietPlan.completed && (
+              <div className="verification-summary">
+                <p><strong>Verified on:</strong> {dietPlan.verification.date}</p>
+                <p>{dietPlan.verification.notes || 'No verification notes were recorded.'}</p>
+              </div>
+            )}
+          </section>
+        </div>
+      )}
+    </div>
+  )
 }
 
 function Inventory({ items, search, setSearch, onAdd }) {

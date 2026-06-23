@@ -52,9 +52,10 @@ function Login({ onLogin }) {
   }
 
   return (
-    <div className="login-container">
-      <div className="login-box">
-        <div className="logo">
+    <div className="login-page">
+      <div className="login-container">
+        <div className="login-box">
+          <div className="logo">
           <h1>📊 Stock Smart</h1>
         </div>
 
@@ -145,6 +146,7 @@ function Login({ onLogin }) {
       <div className="info-section">
         <h3>🚀 Smart Grocery Shopping</h3>
         <p>Manage your stocks efficiently with diet-based smart recommendations</p>
+      </div>
       </div>
     </div>
   )
